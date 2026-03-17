@@ -32,9 +32,16 @@ async def staff_login(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> StaffLoginResponse:
     """Workspace: staff login. Returns JWT for /api/workspace/*."""
-    result = await db.execute(select(User).where(User.email == body.email.lower()))
+    result = await db.execute(
+        select(User).where(User.email == body.email.lower()).limit(1)
+    )
     user = result.scalar_one_or_none()
-    if user is None or not verify_password(body.password, user.password_hash):
+    if user is None or not user.password_hash:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Email ou senha incorretos",
+        )
+    if not verify_password(body.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email ou senha incorretos",
