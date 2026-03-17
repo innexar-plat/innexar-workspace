@@ -1,0 +1,22 @@
+# Env (never in image)
+.env
+.env.*
+
+# Python
+**/__pycache__
+**/.venv
+**/venv
+*.egg-info
+.mypy_cache
+.pytest_cache
+.ruff_cache
+
+# Db (local only)
+*.db
+*.sqlite3
+
+# Git
+.git
+.gitignore
+
+# Keep backend/build/lib (needed at COPY backend/)
