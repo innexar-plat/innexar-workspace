@@ -14,6 +14,7 @@ Assim a UI usa este path para assets e WebSocket; o proxy encaminha o path compl
 import asyncio
 import logging
 from typing import Annotated
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, Query, Request, WebSocket, WebSocketDisconnect
@@ -60,6 +61,20 @@ def _gateway_ws_url() -> str | None:
 
 def _validate_token(token: str) -> bool:
     return decode_openclaw_proxy_token(token) is not None
+
+
+def _public_host_and_proto() -> tuple[str | None, str]:
+    """Host and proto for origin validation headers (from API_PUBLIC_URL)."""
+    base = (settings.API_PUBLIC_URL or "").strip()
+    if not base:
+        return None, "https"
+    try:
+        parsed = urlparse(base)
+        host = parsed.hostname or (parsed.netloc.split(":")[0] if parsed.netloc else None)
+        proto = "https" if parsed.scheme == "https" else "http"
+        return host, proto
+    except Exception:
+        return None, "https"
 
 
 @router.get("/openclaw-session")
@@ -140,6 +155,12 @@ async def _proxy_request(
             headers = {k: v for k, v in request.headers.items() if k.lower() not in ("host", "cookie", "authorization")}
             if gateway_host:
                 headers["Host"] = gateway_host
+            else:
+                # Origin validation: pass public host/proto when direct (no OPENCLAW_GATEWAY_HOST)
+                public_host, proto = _public_host_and_proto()
+                if public_host:
+                    headers["Host"] = public_host
+                headers["X-Forwarded-Proto"] = proto
             r = await client.request(
                 request.method,
                 upstream,
@@ -244,9 +265,22 @@ async def _run_ws_proxy(websocket: WebSocket) -> None:
         return
     await websocket.accept()
     try:
-        connect_kwargs: dict = {}
+        public_host, proto = _public_host_and_proto()
+        origin_base = f"{proto}://{public_host}" if public_host else "https://api.innexar.com.br"
+        ws_headers: dict[str, str] = {
+            "X-Forwarded-Proto": proto,
+            "Origin": origin_base,
+        }
         if gateway_host:
-            connect_kwargs["additional_headers"] = {"Host": gateway_host}
+            ws_headers["Host"] = gateway_host
+        elif public_host:
+            ws_headers["Host"] = public_host
+        # Forward client Origin if present (for gateway origin validation)
+        for name, value in (websocket.scope.get("headers") or []):
+            if name.lower() == b"origin" and value:
+                ws_headers["Origin"] = value.decode() if isinstance(value, bytes) else str(value)
+                break
+        connect_kwargs: dict = {"additional_headers": ws_headers}
         async with websockets.connect(ws_url, **connect_kwargs) as upstream:
             async def from_client() -> None:
                 try:
