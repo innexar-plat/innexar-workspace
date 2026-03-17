@@ -2,6 +2,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -20,7 +21,6 @@ from app.modules.crm.models import (
 )
 from app.modules.crm.service import on_deal_won
 from app.modules.crm.schemas import (
-    ActivityCreate,
     ActivityResponse,
     ContactCreate,
     ContactResponse,
@@ -43,6 +43,15 @@ from app.modules.crm.schemas import (
     TaskResponse,
     TaskUpdate,
 )
+
+
+class ActivityCreate(BaseModel):
+    """Create activity (request body)."""
+
+    tipo: str
+    descricao: str | None = None
+    lead_id: int | None = None
+    deal_id: int | None = None
 
 router = APIRouter(prefix="/crm", tags=["workspace-crm"])
 
