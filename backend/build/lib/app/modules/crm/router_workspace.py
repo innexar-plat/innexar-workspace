@@ -1,4 +1,6 @@
 """Workspace CRM routes: contacts, leads, deals, pipeline, activities, tasks."""
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -20,29 +22,189 @@ from app.modules.crm.models import (
     Task,
 )
 from app.modules.crm.service import on_deal_won
-from app.modules.crm.schemas import (
-    ActivityResponse,
-    ContactCreate,
-    ContactResponse,
-    ContactUpdate,
-    DealCreate,
-    DealMoveRequest,
-    DealResponse,
-    DealUpdate,
-    LeadCreate,
-    LeadResponse,
-    LeadUpdate,
-    PipelineCreate,
-    PipelineResponse,
-    PipelineStageCreate,
-    PipelineStageResponse,
-    PipelineStageUpdate,
-    PipelineUpdate,
-    PipelineWithStagesResponse,
-    TaskCreate,
-    TaskResponse,
-    TaskUpdate,
-)
+
+
+class ContactCreate(BaseModel):
+    """Create contact."""
+
+    name: str
+    email: str | None = None
+    phone: str | None = None
+    customer_id: int | None = None
+
+
+class ContactUpdate(BaseModel):
+    """Update contact (partial)."""
+
+    name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    customer_id: int | None = None
+
+
+class ContactResponse(BaseModel):
+    """Contact response."""
+
+    id: int
+    org_id: str
+    customer_id: int | None
+    name: str
+    email: str | None
+    phone: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class LeadCreate(BaseModel):
+    """Create lead."""
+
+    nome: str
+    email: str | None = None
+    telefone: str | None = None
+    origem: str | None = None
+    status: str = "novo"
+    score: int | None = None
+    responsavel_id: int | None = None
+
+
+class LeadUpdate(BaseModel):
+    """Update lead (partial)."""
+
+    nome: str | None = None
+    email: str | None = None
+    telefone: str | None = None
+    origem: str | None = None
+    status: str | None = None
+    score: int | None = None
+    responsavel_id: int | None = None
+
+
+class LeadResponse(BaseModel):
+    """Lead response."""
+
+    id: int
+    org_id: str
+    nome: str
+    email: str | None
+    telefone: str | None
+    origem: str | None
+    status: str
+    score: int | None
+    responsavel_id: int | None
+    contact_id: int | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PipelineStageCreate(BaseModel):
+    """Create pipeline stage."""
+
+    nome: str
+    ordem: int = 0
+    probabilidade: int | None = None
+
+
+class PipelineStageUpdate(BaseModel):
+    """Update stage (partial)."""
+
+    nome: str | None = None
+    ordem: int | None = None
+    probabilidade: int | None = None
+
+
+class PipelineStageResponse(BaseModel):
+    """Stage response."""
+
+    id: int
+    pipeline_id: int
+    nome: str
+    ordem: int
+    probabilidade: int | None
+
+    model_config = {"from_attributes": True}
+
+
+class PipelineCreate(BaseModel):
+    """Create pipeline."""
+
+    nome: str
+
+
+class PipelineUpdate(BaseModel):
+    """Update pipeline (partial)."""
+
+    nome: str | None = None
+
+
+class PipelineResponse(BaseModel):
+    """Pipeline response."""
+
+    id: int
+    org_id: str
+    nome: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PipelineWithStagesResponse(PipelineResponse):
+    """Pipeline with stages."""
+
+    stages: list[PipelineStageResponse] = []
+
+
+class DealCreate(BaseModel):
+    """Create deal."""
+
+    titulo: str
+    valor: Decimal | None = None
+    etapa_id: int | None = None
+    responsavel_id: int | None = None
+    contato_id: int | None = None
+    lead_id: int | None = None
+    data_fechamento: date | None = None
+
+
+class DealUpdate(BaseModel):
+    """Update deal (partial)."""
+
+    titulo: str | None = None
+    valor: Decimal | None = None
+    etapa_id: int | None = None
+    responsavel_id: int | None = None
+    contato_id: int | None = None
+    lead_id: int | None = None
+    data_fechamento: date | None = None
+    status: str | None = None
+
+
+class DealMoveRequest(BaseModel):
+    """Move deal to another stage."""
+
+    etapa_id: int
+
+
+class DealResponse(BaseModel):
+    """Deal response."""
+
+    id: int
+    org_id: str
+    titulo: str
+    valor: Decimal | None
+    etapa_id: int | None
+    responsavel_id: int | None
+    contato_id: int | None
+    lead_id: int | None
+    data_fechamento: date | None
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 class ActivityCreate(BaseModel):
@@ -52,6 +214,54 @@ class ActivityCreate(BaseModel):
     descricao: str | None = None
     lead_id: int | None = None
     deal_id: int | None = None
+
+
+class ActivityResponse(BaseModel):
+    """Activity response."""
+
+    id: int
+    tipo: str
+    descricao: str | None
+    data: datetime
+    usuario_id: int | None
+    lead_id: int | None
+    deal_id: int | None
+
+
+class TaskCreate(BaseModel):
+    """Create task."""
+
+    titulo: str
+    descricao: str | None = None
+    data_vencimento: date | None = None
+    status: str = "pendente"
+    relacionado_tipo: str | None = None
+    relacionado_id: int | None = None
+
+
+class TaskUpdate(BaseModel):
+    """Update task (partial)."""
+
+    titulo: str | None = None
+    descricao: str | None = None
+    data_vencimento: date | None = None
+    status: str | None = None
+    relacionado_tipo: str | None = None
+    relacionado_id: int | None = None
+
+
+class TaskResponse(BaseModel):
+    """Task response."""
+
+    id: int
+    titulo: str
+    descricao: str | None
+    data_vencimento: date | None
+    status: str
+    usuario_id: int | None
+    relacionado_tipo: str | None
+    relacionado_id: int | None
+
 
 router = APIRouter(prefix="/crm", tags=["workspace-crm"])
 
