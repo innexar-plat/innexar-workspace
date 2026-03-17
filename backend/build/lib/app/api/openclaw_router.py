@@ -148,9 +148,11 @@ async def _proxy_request(
                 content=await request.body(),
             )
             # Strip upstream framing headers; we override with permissive frame-ancestors for iframe embedding.
+            # content-length: Starlette recalcula automaticamente; valor do upstream pode divergir e causar erro.
             skip = (
                 "transfer-encoding",
                 "content-encoding",
+                "content-length",
                 "content-security-policy",
                 "x-frame-options",
             )
@@ -216,9 +218,8 @@ def _ws_token_from_scope(scope: dict) -> str | None:
     return None
 
 
-@router.websocket(f"/{PROXY_PATH}/ws")
-async def openclaw_proxy_ws(websocket: WebSocket) -> None:
-    """Proxy WebSocket para o OpenClaw Gateway (Control UI). Requer cookie ou ?t=."""
+async def _run_ws_proxy(websocket: WebSocket) -> None:
+    """Proxy WebSocket para o OpenClaw Gateway. Requer cookie ou ?t=. Usado em /openclaw-ui e /openclaw-ui/ws."""
     t = _ws_token_from_scope(websocket.scope)
     cookie = websocket.cookies.get(OPENCLAW_COOKIE)
     if not t and not cookie:
@@ -277,3 +278,10 @@ async def openclaw_proxy_ws(websocket: WebSocket) -> None:
             await websocket.close()
         except Exception:
             pass
+
+
+@router.websocket(f"/{PROXY_PATH}")
+@router.websocket(f"/{PROXY_PATH}/ws")
+async def openclaw_proxy_ws(websocket: WebSocket) -> None:
+    """Proxy WebSocket para o Gateway. Aceita conexão em /openclaw-ui ou /openclaw-ui/ws (cliente usa base path)."""
+    await _run_ws_proxy(websocket)
