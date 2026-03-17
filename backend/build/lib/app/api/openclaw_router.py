@@ -3,6 +3,7 @@
 Backend env:
   OPENCLAW_GATEWAY_URL: origem do Gateway sem path (ex: http://openclaw:18789).
   OPENCLAW_GATEWAY_WS_URL: (opcional) WebSocket do Gateway (ex: ws://openclaw:18789/ws).
+  OPENCLAW_GATEWAY_HOST: (opcional) Host header para upstream (Coolify: FQDN do serviço).
   OPENCLAW_PROXY_PATH: path do proxy sob /api/workspace (default: openclaw-ui).
 
 OpenClaw Gateway (opcional.json / openclaw.json) para integração total:
@@ -131,11 +132,14 @@ async def _proxy_request(
     # Forward full path so Gateway with basePath /api/workspace/openclaw-ui receives same path
     path = request.url.path
     upstream = f"{gateway}{path}" if path.startswith("/") else f"{gateway}/{path}"
+    gateway_host = (settings.OPENCLAW_GATEWAY_HOST or "").strip() or None
     try:
         # connect=15s: gateway may be cold-starting; default 60s for read
         timeout = httpx.Timeout(60.0, connect=15.0)
         async with httpx.AsyncClient(timeout=timeout) as client:
             headers = {k: v for k, v in request.headers.items() if k.lower() not in ("host", "cookie", "authorization")}
+            if gateway_host:
+                headers["Host"] = gateway_host
             r = await client.request(
                 request.method,
                 upstream,
@@ -230,6 +234,7 @@ async def openclaw_proxy_ws(websocket: WebSocket) -> None:
     if not ws_url:
         await websocket.close(1011)
         return
+    gateway_host = (settings.OPENCLAW_GATEWAY_HOST or "").strip() or None
     try:
         import websockets
     except ImportError:
@@ -238,7 +243,10 @@ async def openclaw_proxy_ws(websocket: WebSocket) -> None:
         return
     await websocket.accept()
     try:
-        async with websockets.connect(ws_url) as upstream:
+        connect_kwargs: dict = {}
+        if gateway_host:
+            connect_kwargs["additional_headers"] = {"Host": gateway_host}
+        async with websockets.connect(ws_url, **connect_kwargs) as upstream:
             async def from_client() -> None:
                 try:
                     while True:
