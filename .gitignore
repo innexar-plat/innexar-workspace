@@ -1,0 +1,29 @@
+# env
+.env
+.env.*
+
+# Python
+**/__pycache__/
+*.py[cod]
+*.pyc
+**/.venv
+**/venv
+.venv
+venv
+*.egg-info
+.mypy_cache
+.pytest_cache
+.ruff_cache
+
+# build
+**/build/
+
+# db
+*.db
+*.sqlite3
+
+# node
+node_modules
+
+# misc
+.DS_Store
