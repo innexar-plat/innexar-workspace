@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
     FRONTEND_URL: str = "http://localhost:3000"
+    # Public URL of this API (e.g. https://api.innexar.com.br). Used for session URLs in iframes (OpenClaw).
+    # If unset, falls back to request.base_url (may be http behind proxy → Mixed Content).
+    API_PUBLIC_URL: str | None = None
     # Base URL for portal (payment success/cancel redirects). If not set, falls back to FRONTEND_URL or portal.innexar.com.br
     PORTAL_URL: str | None = None
 
