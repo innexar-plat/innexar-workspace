@@ -107,7 +107,9 @@ async def _proxy_request(
     path = request.url.path
     upstream = f"{gateway}{path}" if path.startswith("/") else f"{gateway}/{path}"
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        # connect=15s: gateway may be cold-starting; read=60s for long responses
+        timeout = httpx.Timeout(connect=15.0, read=60.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             headers = {k: v for k, v in request.headers.items() if k.lower() not in ("host", "cookie", "authorization")}
             r = await client.request(
                 request.method,
