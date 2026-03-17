@@ -31,6 +31,10 @@ OPENCLAW_COOKIE = "openclaw_proxy"
 OPENCLAW_COOKIE_MAX_AGE = 600  # 10 min
 PROXY_PATH = "openclaw-ui"
 
+# Allow embedding in iframe from app/portal (required for Control UI).
+# Overrides X-Frame-Options from reverse proxy; CSP frame-ancestors takes precedence.
+FRAME_ANCESTORS = "frame-ancestors 'self' https://app.innexar.com.br https://portal.innexar.com.br https://api.innexar.com.br"
+
 
 def _gateway_url() -> str | None:
     """Base URL of OpenClaw Gateway (e.g. http://openclaw:18789 or http://host:18789/openclaw)."""
@@ -88,6 +92,11 @@ async def openclaw_session(
     }
 
 
+def _iframe_headers() -> dict[str, str]:
+    """Headers to allow embedding in iframe (app.innexar.com.br)."""
+    return {"Content-Security-Policy": FRAME_ANCESTORS}
+
+
 async def _proxy_request(
     request: Request,
     token: str | None,
@@ -95,14 +104,30 @@ async def _proxy_request(
 ) -> Response:
     """Validate token (from query or cookie) and proxy to OpenClaw Gateway (full path)."""
     if not token and not cookie:
-        return Response(status_code=401, content="Missing token (?t=) or session cookie")
+        return Response(
+            status_code=401,
+            content="Missing token (?t=) or session cookie",
+            headers=_iframe_headers(),
+        )
     if token and not _validate_token(token):
-        return Response(status_code=403, content="Invalid or expired token")
+        return Response(
+            status_code=403,
+            content="Invalid or expired token",
+            headers=_iframe_headers(),
+        )
     if cookie and not _validate_token(cookie):
-        return Response(status_code=403, content="Invalid or expired session")
+        return Response(
+            status_code=403,
+            content="Invalid or expired session",
+            headers=_iframe_headers(),
+        )
     gateway = _gateway_url()
     if not gateway:
-        return Response(status_code=503, content="OpenClaw gateway not configured")
+        return Response(
+            status_code=503,
+            content="OpenClaw gateway not configured",
+            headers=_iframe_headers(),
+        )
     # Forward full path so Gateway with basePath /api/workspace/openclaw-ui receives same path
     path = request.url.path
     upstream = f"{gateway}{path}" if path.startswith("/") else f"{gateway}/{path}"
@@ -119,16 +144,22 @@ async def _proxy_request(
                 content=await request.body(),
             )
             out_headers = {k: v for k, v in r.headers.items() if k.lower() not in ("transfer-encoding", "content-encoding")}
+            out_headers.update(_iframe_headers())
             return Response(status_code=r.status_code, content=r.content, headers=out_headers)
     except httpx.ConnectError as e:
         logger.warning("OpenClaw gateway unreachable: %s", e)
         return Response(
             status_code=503,
             content="OpenClaw Gateway indisponível. Verifique OPENCLAW_GATEWAY_URL e se o serviço está no ar.",
+            headers=_iframe_headers(),
         )
     except Exception as e:
         logger.exception("OpenClaw proxy error: %s", e)
-        return Response(status_code=502, content="Erro ao comunicar com o Gateway")
+        return Response(
+            status_code=502,
+            content="Erro ao comunicar com o Gateway",
+            headers=_iframe_headers(),
+        )
 
 
 @router.get(f"/{PROXY_PATH}")
