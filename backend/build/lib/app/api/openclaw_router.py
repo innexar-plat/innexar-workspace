@@ -143,7 +143,14 @@ async def _proxy_request(
                 headers=headers,
                 content=await request.body(),
             )
-            out_headers = {k: v for k, v in r.headers.items() if k.lower() not in ("transfer-encoding", "content-encoding")}
+            # Strip upstream framing headers; we override with permissive frame-ancestors for iframe embedding.
+            skip = (
+                "transfer-encoding",
+                "content-encoding",
+                "content-security-policy",
+                "x-frame-options",
+            )
+            out_headers = {k: v for k, v in r.headers.items() if k.lower() not in skip}
             out_headers.update(_iframe_headers())
             return Response(status_code=r.status_code, content=r.content, headers=out_headers)
     except httpx.ConnectError as e:
