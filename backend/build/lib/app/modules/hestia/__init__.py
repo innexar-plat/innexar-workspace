@@ -1,0 +1,1 @@
+"""Hestia workspace management module."""
