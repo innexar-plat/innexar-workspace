@@ -95,12 +95,12 @@ async def openclaw_session(
             "message": "OpenClaw não configurado. Defina OPENCLAW_GATEWAY_URL.",
         }
     token = create_openclaw_proxy_token(expires_minutes=10)
-    base = settings.API_PUBLIC_URL
-    if not base:
-        base = str(request.base_url).rstrip("/")
-    else:
-        base = base.rstrip("/")
-    url = f"{base}/api/workspace/{PROXY_PATH}?t={token}"
+    base = (
+        getattr(settings, "OPENCLAW_PUBLIC_URL", None)
+        or settings.API_PUBLIC_URL
+        or str(request.base_url).rstrip("/")
+    )
+    url = f"{base.rstrip('/')}/api/workspace/{PROXY_PATH}?t={token}"
     return {
         "enabled": True,
         "url": url,

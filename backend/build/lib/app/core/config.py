@@ -51,6 +51,7 @@ class Settings(BaseSettings):
 
     # OpenClaw: integração assistente IA (Control UI + WebChat + WhatsApp QR). Proxy encaminha path completo.
     # No Gateway configure gateway.controlUi.basePath = "/api/workspace/openclaw-ui" e allowedOrigins.
+    OPENCLAW_PUBLIC_URL: str | None = None  # ex: https://ia.innexar.com.br (URL do subdomínio para iframe)
     OPENCLAW_GATEWAY_URL: str | None = None  # origem sem path, ex: http://openclaw:18789
     OPENCLAW_GATEWAY_WS_URL: str | None = None  # ex: ws://openclaw:18789/ws (se omitido, derivado de OPENCLAW_GATEWAY_URL)
     OPENCLAW_GATEWAY_HOST: str | None = None  # Host header para upstream (Coolify: FQDN do serviço, ex: xxx.sslip.io)
