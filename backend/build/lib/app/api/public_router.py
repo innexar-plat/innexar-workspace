@@ -167,6 +167,7 @@ async def customer_reset_password(
 
 
 @router.post("/web-to-lead", status_code=201)
+@router.post("/contact/submit", status_code=201)
 async def web_to_lead(
     body: WebToLeadRequest,
     request: Request,
