@@ -32,6 +32,62 @@ Este documento padroniza o backend para manter operacao estavel e evolucao conti
   - busca por texto em contatos (`q`)
   - busca por texto em leads (`search`)
   - endpoint resumo operacional: `GET /api/workspace/crm/summary`
+  - vinculo automatico com Customers por email (`contact.customer_id` quando existir cliente)
+
+## Status por modulo
+
+- billing:
+  - status: bom
+  - cobertura: workspace + portal + webhooks publicos
+  - gap: ampliar testes de cobranca de borda (falha de gateway e retries)
+- checkout:
+  - status: bom
+  - cobertura: endpoint publico unico de inicio de checkout
+  - gap: testes e2e com cenarios de cancelamento/erro de pagamento
+- products:
+  - status: bom
+  - cobertura: catalogo publico com planos
+  - gap: validacoes adicionais de consistencia de planos ativos
+- crm:
+  - status: melhorado
+  - cobertura: CRUD workspace + intake publico + summary
+  - gap: service dedicado para scoring e enriquecimento por UTM/campanha
+- customers:
+  - status: bom
+  - cobertura: CRUD workspace + relacionamento com CRM/Projects/Support
+  - gap: reconciliacao automatica de dados de contato entre modulos
+- projects:
+  - status: bom
+  - cobertura: workspace + portal
+  - gap: templates de fluxo e automacoes de transicao de status
+- support:
+  - status: bom
+  - cobertura: workspace + portal com tickets e mensagens
+  - gap: SLA automatizado e escalonamento por prioridade
+- files:
+  - status: bom
+  - cobertura: workspace + portal para arquivos de projeto
+  - gap: politicas de retencao e auditoria de download/upload
+- notifications:
+  - status: bom
+  - cobertura: portal notifications
+  - gap: centralizacao de eventos multi-modulo
+- dashboard:
+  - status: parcial
+  - cobertura: endpoints workspace
+  - gap: consolidar KPIs de CRM+billing+support em uma visao unica
+- orders:
+  - status: bom
+  - cobertura: workspace orders
+  - gap: trilha de auditoria de mudancas de status de pedido
+- hestia:
+  - status: bom
+  - cobertura: workspace para operacao de hosting/provisioning
+  - gap: testes de resiliencia com falhas de API externa
+- system:
+  - status: bom
+  - cobertura: configuracoes, seeds e integracoes
+  - gap: hardening de governanca de seeds em ambiente de producao
 
 ## Checklist de Saude
 

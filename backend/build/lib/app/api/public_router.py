@@ -14,6 +14,7 @@ from app.core.audit import log_audit
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, get_db
 from app.core.security import create_token_customer, hash_password, verify_password
+from app.models.customer import Customer
 from app.models.customer_password_reset import CustomerPasswordResetToken
 from app.models.customer_user import CustomerUser
 from app.modules.crm.models import Activity, Contact, Lead
@@ -213,6 +214,15 @@ async def web_to_lead(
             detail="Too many submissions from this IP",
         )
 
+    customer_r = await db.execute(
+        select(Customer)
+        .where(Customer.org_id == "innexar", Customer.email == email)
+        .order_by(Customer.id.desc())
+        .limit(1)
+    )
+    customer = customer_r.scalar_one_or_none()
+    customer_id = customer.id if customer else None
+
     # Deduplicate by org+email for cleaner CRM history.
     existing_contact_r = await db.execute(
         select(Contact)
@@ -224,12 +234,13 @@ async def web_to_lead(
     contact_reused = contact is not None
     if contact:
         contact.name = body.name
+        contact.customer_id = customer_id
         if phone:
             contact.phone = phone
     else:
         contact = Contact(
             org_id="innexar",
-            customer_id=None,
+            customer_id=customer_id,
             name=body.name,
             email=email,
             phone=phone,
@@ -275,6 +286,7 @@ async def web_to_lead(
             "lead_id": lead.id,
             "score": score,
             "contact_reused": contact_reused,
+            "customer_linked": customer_id is not None,
         },
     )
     return {"id": contact.id, "lead_id": lead.id}
