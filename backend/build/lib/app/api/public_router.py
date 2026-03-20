@@ -16,7 +16,7 @@ from app.core.database import AsyncSessionLocal, get_db
 from app.core.security import create_token_customer, hash_password, verify_password
 from app.models.customer_password_reset import CustomerPasswordResetToken
 from app.models.customer_user import CustomerUser
-from app.modules.crm.models import Contact, Lead
+from app.modules.crm.models import Activity, Contact, Lead
 from app.providers.email.loader import get_email_provider
 from app.schemas.auth import CustomerLoginResponse, LoginRequest
 
@@ -48,6 +48,26 @@ class WebToLeadRequest(BaseModel):
     phone: str | None = None
     message: str | None = None
     source: str | None = None
+
+
+def _normalize_phone(phone: str | None) -> str | None:
+    """Normalize phone for better dedup/search while preserving optionality."""
+    if not phone:
+        return None
+    normalized = "".join(ch for ch in phone if ch.isdigit() or ch == "+")
+    return normalized or None
+
+
+def _lead_score(message: str | None, phone: str | None, source: str | None) -> int:
+    """Simple deterministic score for first qualification pass."""
+    score = 25
+    if phone:
+        score += 20
+    if message and len(message.strip()) >= 40:
+        score += 20
+    if source and source.lower() not in {"site", "unknown", ""}:
+        score += 10
+    return min(score, 100)
 
 
 @router.post("/auth/customer/login", response_model=CustomerLoginResponse)
@@ -174,7 +194,12 @@ async def web_to_lead(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict[str, int]:
     """Public: create Contact (lead) from form. Rate limited by IP and email."""
-    email_key = f"email:{body.email.lower().strip()}"
+    email = body.email.lower().strip()
+    phone = _normalize_phone(body.phone)
+    source = (body.source or "site").strip() or "site"
+    score = _lead_score(body.message, phone, source)
+
+    email_key = f"email:{email}"
     client_host = request.client.host if request.client else "unknown"
     ip_key = f"ip:{client_host}"
     if not _rate_limit_check(email_key, _RATE_LIMIT_EMAIL):
@@ -187,28 +212,54 @@ async def web_to_lead(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many submissions from this IP",
         )
-    contact = Contact(
-        org_id="innexar",
-        customer_id=None,
-        name=body.name,
-        email=body.email,
-        phone=body.phone,
-    )
-    db.add(contact)
-    await db.flush()
 
-    origem = (body.source or "site").strip() or "site"
+    # Deduplicate by org+email for cleaner CRM history.
+    existing_contact_r = await db.execute(
+        select(Contact)
+        .where(Contact.org_id == "innexar", Contact.email == email)
+        .order_by(Contact.id.desc())
+        .limit(1)
+    )
+    contact = existing_contact_r.scalar_one_or_none()
+    contact_reused = contact is not None
+    if contact:
+        contact.name = body.name
+        if phone:
+            contact.phone = phone
+    else:
+        contact = Contact(
+            org_id="innexar",
+            customer_id=None,
+            name=body.name,
+            email=email,
+            phone=phone,
+        )
+        db.add(contact)
+        await db.flush()
+
     lead = Lead(
         org_id="innexar",
         nome=body.name,
-        email=body.email,
-        telefone=body.phone,
-        origem=origem,
-        status="novo",
+        email=email,
+        telefone=phone,
+        origem=source,
+        status="qualificado" if score >= 55 else "novo",
+        score=score,
         contact_id=contact.id,
     )
     db.add(lead)
     await db.flush()
+
+    if body.message and body.message.strip():
+        activity = Activity(
+            tipo="nota_publica",
+            descricao=body.message.strip(),
+            usuario_id=None,
+            lead_id=lead.id,
+            deal_id=None,
+        )
+        db.add(activity)
+        await db.flush()
 
     await log_audit(
         db,
@@ -218,6 +269,12 @@ async def web_to_lead(
         actor_type="public",
         actor_id=client_host,
         org_id="innexar",
-        payload={"message": body.message, "source": body.source, "lead_id": lead.id},
+        payload={
+            "message": body.message,
+            "source": source,
+            "lead_id": lead.id,
+            "score": score,
+            "contact_reused": contact_reused,
+        },
     )
     return {"id": contact.id, "lead_id": lead.id}

@@ -5,7 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -263,6 +263,19 @@ class TaskResponse(BaseModel):
     relacionado_id: int | None
 
 
+class CRMSummaryResponse(BaseModel):
+    """High-level CRM counters for dashboard/ops."""
+
+    contacts: int
+    leads_total: int
+    leads_new: int
+    leads_qualified: int
+    leads_won: int
+    deals_open: int
+    deals_won: int
+    tasks_pending: int
+
+
 router = APIRouter(prefix="/crm", tags=["workspace-crm"])
 
 
@@ -276,10 +289,22 @@ def _org_id(current: User) -> str:
 @router.get("/contacts", response_model=list[ContactResponse])
 async def list_contacts(
     db: Annotated[AsyncSession, Depends(get_db)],
-    _: Annotated[User, Depends(RequirePermission("crm:read"))],
+    current: Annotated[User, Depends(RequirePermission("crm:read"))],
+    q: str | None = Query(None, description="Search by name/email/phone"),
 ):
     """List contacts (workspace)."""
-    r = await db.execute(select(Contact).order_by(Contact.id))
+    org = _org_id(current)
+    query = select(Contact).where(Contact.org_id == org).order_by(Contact.id.desc())
+    if q is not None and q.strip():
+        term = f"%{q.strip()}%"
+        query = query.where(
+            or_(
+                Contact.name.ilike(term),
+                Contact.email.ilike(term),
+                Contact.phone.ilike(term),
+            )
+        )
+    r = await db.execute(query)
     return list(r.scalars().all())
 
 
@@ -366,18 +391,67 @@ async def list_leads(
     status: str | None = Query(None, description="Filter by status"),
     origem: str | None = Query(None, description="Filter by origem"),
     responsavel_id: int | None = Query(None, description="Filter by responsavel_id"),
+    search: str | None = Query(None, description="Search by nome/email/telefone"),
 ):
     """List leads (workspace)."""
     org = _org_id(current)
-    q = select(Lead).where(Lead.org_id == org).order_by(Lead.id.desc())
+    query = select(Lead).where(Lead.org_id == org).order_by(Lead.id.desc())
     if status is not None:
-        q = q.where(Lead.status == status)
+        query = query.where(Lead.status == status)
     if origem is not None:
-        q = q.where(Lead.origem == origem)
+        query = query.where(Lead.origem == origem)
     if responsavel_id is not None:
-        q = q.where(Lead.responsavel_id == responsavel_id)
-    r = await db.execute(q)
+        query = query.where(Lead.responsavel_id == responsavel_id)
+    if search is not None and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.where(
+            or_(
+                Lead.nome.ilike(term),
+                Lead.email.ilike(term),
+                Lead.telefone.ilike(term),
+            )
+        )
+    r = await db.execute(query)
     return list(r.scalars().all())
+
+
+@router.get("/summary", response_model=CRMSummaryResponse)
+async def crm_summary(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current: Annotated[User, Depends(RequirePermission("crm:read"))],
+):
+    """Return high-level CRM counters scoped by organization."""
+    org = _org_id(current)
+
+    contacts = await db.scalar(select(func.count(Contact.id)).where(Contact.org_id == org))
+    leads_total = await db.scalar(select(func.count(Lead.id)).where(Lead.org_id == org))
+    leads_new = await db.scalar(
+        select(func.count(Lead.id)).where(Lead.org_id == org, Lead.status == "novo")
+    )
+    leads_qualified = await db.scalar(
+        select(func.count(Lead.id)).where(Lead.org_id == org, Lead.status == "qualificado")
+    )
+    leads_won = await db.scalar(
+        select(func.count(Lead.id)).where(Lead.org_id == org, Lead.status == "ganho")
+    )
+    deals_open = await db.scalar(
+        select(func.count(Deal.id)).where(Deal.org_id == org, Deal.status == "aberto")
+    )
+    deals_won = await db.scalar(
+        select(func.count(Deal.id)).where(Deal.org_id == org, Deal.status == "ganho")
+    )
+    tasks_pending = await db.scalar(select(func.count(Task.id)).where(Task.status == "pendente"))
+
+    return CRMSummaryResponse(
+        contacts=contacts or 0,
+        leads_total=leads_total or 0,
+        leads_new=leads_new or 0,
+        leads_qualified=leads_qualified or 0,
+        leads_won=leads_won or 0,
+        deals_open=deals_open or 0,
+        deals_won=deals_won or 0,
+        tasks_pending=tasks_pending or 0,
+    )
 
 
 @router.post("/leads", response_model=LeadResponse, status_code=201)
